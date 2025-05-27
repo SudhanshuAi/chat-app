@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useState, useRef, useCallback } from 'react';
-import { RealtimePostgresInsertPayload } from '@supabase/supabase-js';
+// Added RealtimePostgresChangesPayload
+import { RealtimePostgresInsertPayload, RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 import { createClient } from '@/utils/supabase/client';
 import { useRouter } from 'next/navigation';
 import { MdRefresh, MdHelpOutline, MdSettings, MdLogout, MdSearch, MdMoreVert, MdInsertEmoticon, MdMic, MdSend, MdGroup, MdChat, MdFilterList, MdSave, MdHome, MdChatBubble, MdLabel, MdShowChart, MdList, MdCampaign, MdShare, MdViewList, MdImage, MdCheckBox, MdStar, MdInfo, MdPhoneIphone, MdNotifications, MdMenu } from 'react-icons/md';
@@ -62,7 +63,7 @@ export default function Chat() {
       const { data: authData, error: authError } = await supabase.auth.getUser();
       if (authError || !authData.user) {
         console.error('Error fetching auth user:', authError?.message);
-        router.push('/login'); // Consistent with user's latest change
+        router.push('/login');
         return;
       }
 
@@ -87,7 +88,6 @@ export default function Chat() {
         setAllUsers(usersData || []);
       }
 
-      // RLS on 'groups' (using is_user_in_group) handles filtering
       const { data: groupsData, error: groupsError } = await supabase
         .from('groups')
         .select('id, name, created_at, created_by');
@@ -110,10 +110,8 @@ export default function Chat() {
 
   const handleRealtimeMessageCallback = useCallback((payload: RealtimePostgresInsertPayload<Message>) => {
     const incomingMessage = payload.new;
-    // console.log('Real-time message received by callback:', incomingMessage); // Kept for debugging
 
     if (!currentUser || !selectedChat) {
-        // console.log("Callback skipped: no current user or selected chat to match against.");
         return;
     }
 
@@ -130,12 +128,11 @@ export default function Chat() {
     }
 
     if (!isForActiveChat) {
-        // console.log("Realtime message not for active chat, ignored by main callback logic:", incomingMessage, "Current active chat:", selectedChat);
         return;
     }
 
-    const messageExists = (messages: Message[], newMessage: Message) =>
-        messages.some(msg => msg.id === newMessage.id || (msg.id.toString().startsWith('temp-') && msg.content === newMessage.content && msg.sender_id === newMessage.sender_id));
+    const messageExists = (messagesArr: Message[], newMessageItem: Message) =>
+        messagesArr.some(msg => msg.id === newMessageItem.id || (msg.id.toString().startsWith('temp-') && msg.content === newMessageItem.content && msg.sender_id === newMessageItem.sender_id));
 
 
     setMessages(prevMessages => {
@@ -149,14 +146,14 @@ export default function Chat() {
             const updatedMessages = prevMessages.map(msg => {
                 if (msg.id.toString().startsWith('temp-') &&
                     msg.sender_id === incomingMessage.sender_id &&
-                    msg.content === incomingMessage.content 
+                    msg.content === incomingMessage.content
                 ) {
                     replaced = true;
                     return incomingMessage;
                 }
-                if (msg.id === incomingMessage.id) { 
-                    replaced = true; 
-                    return incomingMessage; 
+                if (msg.id === incomingMessage.id) {
+                    replaced = true;
+                    return incomingMessage;
                 }
                 return msg;
             });
@@ -168,7 +165,7 @@ export default function Chat() {
         }
     });
 
-  }, [currentUser, selectedChat]); 
+  }, [currentUser, selectedChat]);
 
   useEffect(() => {
     if (!selectedChat || !currentUser) {
@@ -210,50 +207,51 @@ export default function Chat() {
       channel.on<Message>(
         'postgres_changes',
         { ...baseFilterOptions },
-        (payload) => {
-            const msg = payload.new as Message;
-            if (
-                selectedChat && selectedChat.type === 'dm' && 
-                currentUser && (selectedChat.data as Profile).id && 
-                (
-                    (msg.sender_id === currentUser.id && msg.recipient_id === (selectedChat.data as Profile).id) ||
-                    (msg.sender_id === (selectedChat.data as Profile).id && msg.recipient_id === currentUser.id)
-                ) && msg.group_id === null
-            ) {
-                handleRealtimeMessageCallback(payload as RealtimePostgresInsertPayload<Message>);
-            } else {
-                //  console.log('Realtime DM message filtered out by client subscription listener:', msg, "Current chat context:", selectedChat);
+        // Explicitly type payload and use type guard
+        (payload: RealtimePostgresChangesPayload<Message>) => {
+            if (payload.eventType === 'INSERT') {
+                const msg = payload.new; // Now msg is correctly typed as Message
+                if (
+                    selectedChat && selectedChat.type === 'dm' &&
+                    currentUser && (selectedChat.data as Profile).id &&
+                    (
+                        (msg.sender_id === currentUser.id && msg.recipient_id === (selectedChat.data as Profile).id) ||
+                        (msg.sender_id === (selectedChat.data as Profile).id && msg.recipient_id === currentUser.id)
+                    ) && msg.group_id === null
+                ) {
+                    handleRealtimeMessageCallback(payload); // Pass the InsertPayload
+                }
             }
         }
       );
-    } else { 
+    } else {
       const group = selectedChat.data as Group;
       channelName = `messages-group-${group.id}`;
       channel = supabase.channel(channelName);
       channel.on<Message>(
         'postgres_changes',
         { ...baseFilterOptions, filter: `group_id=eq.${group.id}` },
-        (payload) => { 
-            handleRealtimeMessageCallback(payload as RealtimePostgresInsertPayload<Message>)
+         // Explicitly type payload and use type guard
+        (payload: RealtimePostgresChangesPayload<Message>) => {
+            if (payload.eventType === 'INSERT') {
+                handleRealtimeMessageCallback(payload); // Pass the InsertPayload
+            }
         }
       );
     }
 
     if (channel) {
-        // console.log(`Subscribing to ${channelName}`);
         channel.subscribe((status, err) => {
-        //   console.log(`Subscription to ${channelName} status: ${status}`);
           if (err) console.error(`Subscription error on ${channelName}:`, err.message);
         });
     }
 
     return () => {
       if (channel) {
-        // console.log(`Unsubscribing from ${channelName}`);
         supabase.removeChannel(channel);
       }
     };
-  }, [selectedChat, currentUser, handleRealtimeMessageCallback, supabase]); 
+  }, [selectedChat, currentUser, handleRealtimeMessageCallback, supabase]);
 
 
   const handleSendMessage = async (e: React.FormEvent) => {
@@ -281,7 +279,6 @@ export default function Chat() {
       setMessages((prev) => prev.filter((msg) => msg.id !== tempMessage.id));
       alert(`Error: ${error.message}`);
     } else if (data) {
-    //   console.log('Message sent & confirmed by DB:', data);
        setMessages((prev) => {
             const existing = prev.find(m => m.id === data.id);
             if (existing) return prev.map(m => m.id === data.id ? data : m).sort((a,b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
@@ -294,9 +291,7 @@ export default function Chat() {
     e.preventDefault();
     if (!newGroupName.trim() || !currentUser) return;
 
-    // console.log("Attempting to create group by user:", currentUser.id, "Group name:", newGroupName);
     const { data: { user: authUser } } = await supabase.auth.getUser();
-    // console.log("Current auth.uid() from Supabase at time of group creation:", authUser?.id);
 
     if (!authUser || currentUser.id !== authUser.id) {
         console.error("CRITICAL: currentUser.id in state does not match auth.uid()!");
@@ -333,7 +328,6 @@ export default function Chat() {
       setShowCreateGroupModal(false);
       setNewGroupName('');
       setSelectedUserIdsForGroup([]);
-    //   console.log('Group created successfully:', groupData);
 
     } catch (error: unknown) {
       console.error('Error creating group:', error instanceof Error ? error.message : 'Unknown error');
@@ -391,7 +385,7 @@ export default function Chat() {
             <button className="p-2 hover:bg-gray-100 rounded" onClick={handleSignOut}><MdLogout size={22} className="text-gray-700" /></button>
           </div>
         </div>
-        <div className="flex flex-1 min-h-0"> 
+        <div className="flex flex-1 min-h-0">
           <div className="w-[380px] bg-white border-r flex flex-col min-h-0">
             <div className="flex flex-col flex-shrink-0">
               <div className="flex items-center gap-2 px-4 py-3 border-b">
@@ -421,12 +415,12 @@ export default function Chat() {
             </div>
             {/* Chat List */}
             <div className="flex-1 min-h-0 max-h-full overflow-y-auto">
-              {chatList.length === 0 && !search.trim() && ( // Show "No chats yet" only if list is empty and no search term
+              {chatList.length === 0 && !search.trim() && (
                 <p className="text-xs text-gray-500 p-4">No chats yet.</p>
               )}
               {chatList
                 .filter(chat => {
-                  if (!search.trim()) { // If search is empty, show all chats
+                  if (!search.trim()) {
                     return true;
                   }
                   const searchTerm = search.toLowerCase();
@@ -437,7 +431,7 @@ export default function Chat() {
                     const group = chat.data as Group;
                     return group.name.toLowerCase().includes(searchTerm);
                   }
-                  return false; // Should not be reached
+                  return false;
                 })
                 .map((chat) => {
                   const isSelected = selectedChat?.id === chat.id;
@@ -455,21 +449,19 @@ export default function Chat() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between">
                           <span className="font-medium truncate text-black">{name}</span>
-                          {/* <span className="ml-2 bg-green-500 text-white text-xs rounded-full px-2 py-0.5">1</span> */}
                         </div>
-                        {/* Removed last message preview from list item for simplicity with search */}
                       </div>
                     </div>
                   );
                 })}
-                {/* Show "No results" if search term is present and filtered list is empty */}
                 {search.trim() && chatList.filter(chat => {
                     const searchTerm = search.toLowerCase();
                     if (chat.type === 'dm') return (chat.data as Profile).username.toLowerCase().includes(searchTerm);
                     if (chat.type === 'group') return (chat.data as Group).name.toLowerCase().includes(searchTerm);
                     return false;
                 }).length === 0 && (
-                    <p className="text-xs text-gray-500 p-4">No results found for &ldquo;{search}&rdquo;</p>
+                    // Escaped quotes to " as per error message context
+                    <p className="text-xs text-gray-500 p-4">No results found for "{search}"</p>
                 )}
             </div>
             {/* Sidebar bottom icons */}
@@ -527,10 +519,11 @@ export default function Chat() {
                     <div ref={messagesEndRef} />
                   </>
                 ) : (
-                  <p className="text-gray-500 text-sm">&ldquo;No messages yet. Start the conversation!&rdquo;</p>
+                  // Escaped quotes to " as per error message context
+                  <p className="text-gray-500 text-sm">"No messages yet. Start the conversation!"</p>
                 )
               ) : (
-                <div className="flex flex-1 items-center justify-center h-full w-full"> 
+                <div className="flex flex-1 items-center justify-center h-full w-full">
                   <span className="text-gray-500 text-center text-2xl">Select a user or group to start chatting.</span>
                 </div>
               )}
