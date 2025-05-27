@@ -4,7 +4,7 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import { RealtimePostgresInsertPayload } from '@supabase/supabase-js';
 import { createClient } from '@/utils/supabase/client';
 import { useRouter } from 'next/navigation';
-import { MdRefresh, MdHelpOutline, MdSettings, MdLogout, MdSearch, MdAttachFile, MdMoreVert, MdInsertEmoticon, MdMic, MdSend, MdGroup, MdChat, MdFilterList, MdSave, MdHome, MdChatBubble, MdLabel, MdShowChart, MdList, MdCampaign, MdShare, MdViewList, MdImage, MdCheckBox, MdStar, MdInfo, MdPhoneIphone, MdNotifications, MdMenu } from 'react-icons/md';
+import { MdRefresh, MdHelpOutline, MdSettings, MdLogout, MdSearch, MdMoreVert, MdInsertEmoticon, MdMic, MdSend, MdGroup, MdChat, MdFilterList, MdSave, MdHome, MdChatBubble, MdLabel, MdShowChart, MdList, MdCampaign, MdShare, MdViewList, MdImage, MdCheckBox, MdStar, MdInfo, MdPhoneIphone, MdNotifications, MdMenu } from 'react-icons/md';
 
 type Message = {
   id: number | string; // Allow string for temp IDs
@@ -106,7 +106,7 @@ export default function Chat() {
       }
     };
     fetchData();
-  }, [router]); // supabase is stable
+  }, [router, supabase]);
 
   const handleRealtimeMessageCallback = useCallback((payload: RealtimePostgresInsertPayload<Message>) => {
     const incomingMessage = payload.new;
@@ -253,7 +253,7 @@ export default function Chat() {
         supabase.removeChannel(channel);
       }
     };
-  }, [selectedChat, currentUser, handleRealtimeMessageCallback]); 
+  }, [selectedChat, currentUser, handleRealtimeMessageCallback, supabase]); 
 
 
   const handleSendMessage = async (e: React.FormEvent) => {
@@ -527,7 +527,7 @@ export default function Chat() {
                     <div ref={messagesEndRef} />
                   </>
                 ) : (
-                  <p className="text-gray-500 text-center mt-10">No messages yet. Start the conversation!</p>
+                  <p className="text-gray-500 text-sm">&ldquo;No messages yet. Start the conversation!&rdquo;</p>
                 )
               ) : (
                 <div className="flex flex-1 items-center justify-center h-full w-full"> 
