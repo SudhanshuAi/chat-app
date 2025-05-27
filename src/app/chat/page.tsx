@@ -531,8 +531,8 @@ export default function Chat() {
             {/* Message Input Bar */}
             {selectedChat && (
               <form onSubmit={handleSendMessage} className="flex items-center gap-2 px-6 py-4 bg-[#f7f7f7] border-t flex-shrink-0">
-                <button type="button" className="p-2 text-black-500 hover:text-green-600"><MdInsertEmoticon size={22} /></button>
-                <button type="button" className="p-2 text-black-500 hover:text-green-600"><MdMoreVert size={22} /></button>
+                <button type="button" className="p-2 text-gray-500 hover:text-green-600"><MdInsertEmoticon size={22} /></button>
+                <button type="button" className="p-2 text-gray-500 hover:text-green-600"><MdMoreVert size={22} /></button>
                 <input
                   type="text"
                   value={newMessage}
