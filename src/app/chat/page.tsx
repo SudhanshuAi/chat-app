@@ -335,9 +335,9 @@ export default function Chat() {
       setSelectedUserIdsForGroup([]);
     //   console.log('Group created successfully:', groupData);
 
-    } catch (error: any) {
-      console.error('Error creating group:', error.message);
-      alert(`Failed to create group: ${error.message}`);
+    } catch (error: unknown) {
+      console.error('Error creating group:', error instanceof Error ? error.message : 'Unknown error');
+      alert(`Failed to create group: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
 
@@ -469,7 +469,7 @@ export default function Chat() {
                     if (chat.type === 'group') return (chat.data as Group).name.toLowerCase().includes(searchTerm);
                     return false;
                 }).length === 0 && (
-                    <p className="text-xs text-gray-500 p-4">No results found for "{search}"</p>
+                    <p className="text-xs text-gray-500 p-4">No results found for &ldquo;{search}&rdquo;</p>
                 )}
             </div>
             {/* Sidebar bottom icons */}
